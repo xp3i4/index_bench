@@ -252,25 +252,123 @@ int umTest(StringSet<DnaString> & reads,  StringSet<DnaString> & genome)
     return 0;
 }
 
+void opKmerAnalysis5(StringSet<DnaString> & genome, StringSet<DnaString> & reads)
+{
+
+    TShape shape;
+    TIndex_u index(genome);
+    uint64_t mask  = 131072 - 1, dn, count=0, sum = 0;
+    uint64_t anchor[mask + 1] = {1<<63};
+    String<uint64_t> result;
+    resize(result, length(reads));
+    double time = sysTime();
+    //std::cout << length(result) << std::endl;
+    std::cout << "opAnalysis5() \n";
+
+    //createQGramIndexDirOnly(index);
+    indexCreate(index, FibreSADir());
+    //_initAnchor(anchor, mask);
+    for (uint64_t j = 0; j < length(reads); j++)
+    {
+    //std::cout << "done " << std::endl;
+        TIter it = begin(reads[j]);
+        hashInit(shape, it);
+        for (uint64_t h = 0; h < length(anchor); h++)
+            anchor[h] = 0;
+        uint64_t x = 1;
+        sum=0;
+        for (uint64_t k = 0; k < (length(reads[j]) - shape.span + 1); k++)
+        {
+            hashNext(shape, it + k);
+            dn = getBucket(index.bucketMap, shape.hValue);
+            uint64_t pre = ~0;
+            if(index.dir[dn+1] - index.dir[dn] < 32)
+            {
+                sum += index.dir[dn+1] - index.dir[dn];
+                for (uint64_t n = index.dir[dn]; n < index.dir[dn + 1]; n++)
+                {
+                    if (index.sa[n].i2 - pre > 1000)
+                    {
+                        anchor[x++] = ((index.sa[n].i2- k) << 20) + k;
+                        pre = index.sa[n].i2;
+                    }
+                }
+            }
+        }
+        anchor[0] = anchor[1];
+        uint64_t max1 = 0, max2 = 0, k1 = 0, k2 =0, countk = 0, max=0, c_b=0,
+        start=0, ak=anchor[0], cbb=0, cbs=0, mask_cb = (1<<20) - 1,
+        sb=0;
+        //for (uint64_t k = 0; k < length(anchor); k++)
+        std::sort(begin(anchor), begin(anchor) + x);
+
+        //std::cout << std::endl << j << " ";
+        
+        for (uint64_t k = 1; k <= x; k++)
+        {
+            if (anchor[k]-ak < (1000<<20))
+            {
+                cbb++;
+                        }
+            else
+            {
+                std::sort(begin(anchor)+sb, begin(anchor)+k, 
+                [&mask_cb](uint64_t &a, uint64_t &b){return (a & mask_cb) < (b & mask_cb);});
+                for (uint64_t m = sb+1; m < k; m++)
+                {
+                    if(((anchor[m]-anchor[m-1]) & mask_cb) > shapelength) 
+                        c_b += shapelength;
+                    else
+                    {
+                        c_b += (anchor[m] - anchor[m-1]) & mask_cb; 
+                    }
+                }
+                if (c_b > max)
+                {
+                    max = c_b;
+                    start = sb;
+                }
+                sb = k;
+                ak = anchor[k];
+                cbb = 1;
+                c_b = shapelength;
+                cbs=0;
+            }
+
+        }
+        result[j] = (anchor[start] >> 20);
+        std::cout << j << " 1  " << result[j] << std::endl;
+        //std::cout << "1 2  " << result[j] << std::endl;
+            //std::cout << " " << j << " " << length(reads[j]) << " " << (anchor[start] >> 20) << " " << (k1 << 10) << " " << max1 << " " << k2 << " " << max2 << " " << countk / (float)length(anchor) << " " << sum << " " << (float)sum / length(reads[j]) << " " << anchor[start] << " " << start << std::endl;
+        //std:: cout << k << " " << (anchor[k] & _AnchorMask_i1_) << std::endl; //<< " " << std::bitset<64>(anchor[k]) << std::endl;
+        sum ^= max1;
+        if (max1 == 0)
+            count++;
+    }
+    std::cout << "    End mnKmerAnalysis() systime() = " << sysTime() - time << std::endl;
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 3)
         return 1;
     //time = sysTime();
-    SeqFileIn rFile(toCString(argv[1]));
-    SeqFileIn gFile(toCString(argv[2]));
-    StringSet<CharString> ids;
+    SeqFileIn gFile(toCString(argv[1]));
+    SeqFileIn rFile(toCString(argv[2]));
+    StringSet<CharString> ids_r;
+    StringSet<CharString> ids_g;
     StringSet<DnaString> reads;
     StringSet<DnaString> genome;
-    readRecords(ids, reads, rFile);
-    readRecords(ids, genome, gFile);
+    readRecords(ids_r, reads, rFile);
+    readRecords(ids_g, genome, gFile);
     //std::cout << "read done sysTime " << sysTime() - time << std::endl;
     //umTest(reads, genome);
     //uTest(reads, genome);
     //mTest1(reads, genome);
     //mTest2(reads, genome);
     //uTest3(reads, genome);
-    mTest3(reads, genome);
+    //mTest3(reads, genome);
     //mTest4(reads, genome);
+    opKmerAnalysis5(genome, reads);
     return 0;
 }
