@@ -6,13 +6,15 @@
 #include <math.h>
 #include <seqan/basic.h>
 #include <bitset>
+#include <climits>
+
 
 #define nl std::endl;
 
 using namespace seqan;
 
-const unsigned shapelength = 25;
-const unsigned shapeweight = 18;
+const unsigned shapelength = 30;
+const unsigned shapeweight = 22;
 const unsigned blocklimit = 32;
 
 
@@ -27,6 +29,85 @@ typedef Index<StringSet<DnaString>, IndexQGram<UngappedShape<shapelength>, OpenA
 typedef Index<StringSet<DnaString>, IndexQGram<SimpleMShape, OpenAddressing > > TMIndex;
 
 typedef Value<TShape>::Type HValue;
+
+size_t popcount(size_t n) {
+    std::bitset<sizeof(size_t) * CHAR_BIT> b(n);
+    return b.count();
+}
+
+String<uint16_t> calMini(Iterator<String<Dna> >::Type it, unsigned len, unsigned  win)
+{
+    String<uint64_t> result;
+    resize(result, len/win);
+    Shape<Dna, UngappedShape<10> > shape; 
+    uint64_t value, min = ~0, sum = 0;
+    for (uint64_t j = 0; j < len/win; j++)
+    {
+        min = ~0;
+        hashInit(shape, it);
+        for (uint64_t k = 0; k < win; k++)
+        {
+            value = hash(shape, it+j*win+k);
+            if (value < min)
+            {
+                min = value;
+            }
+        }
+        result[j] = min; 
+    
+    }
+//    for (unsigned j = 0; j < length(result); j++)
+//        std::cout << result[j] << std::endl;
+    return result;
+}
+
+void path(StringSet<DnaString> & genome, StringSet<DnaString> & reads)//, uint64_t & start, uint64_t & readLength)
+{
+    double time = sysTime(); 
+    Shape<Dna, UngappedShape<10> > shape;
+    unsigned win = 30, block=180;
+    uint64_t sum = 0;
+    String<uint64_t> res0, res1;
+    resize(res0, length(reads[0]));
+    resize(res1, length(reads[0]));
+    res0 = calMini(begin(genome[0]) + 173337376, length(reads[0]),win);
+    for (uint64_t j = 0; j < 1; j++)
+    {
+        res1 = calMini(begin(reads[j]), length(reads[j]), win);
+    }
+//    for (uint64_t j = 5; j < length(reads[0])/win; j++)
+//    {
+//        for (uint64_t k = 0; k<10;k++)
+//        {
+//            //std::cout << j/block*win << " " << res0[j] << " " << res1[j] << std::endl;
+//            std::cout << std::bitset<32>(res0[j] ^ res1[j-5+k]) << std::endl;
+//            if (j/block*win==block-1)
+//                std::cout << std::endl;
+//        }
+//    std::cout << std::endl;
+//    }
+    unsigned count = 0;
+    unsigned delta = 10;
+    for (uint64_t k = delta; k < length(res0) - delta; k++)
+    {
+        uint64_t min = ~0, p=0;
+        for (uint64_t j = k-delta; j<k+delta;j++)
+        {
+            if (popcount((res0[k] ^ res1[j])) < min)
+            {
+                min = popcount(res0[k] ^ res1[j]);
+                p=j;
+            }
+        }
+        if (min < shape.span*2*0.3)// && pow(k-p, 2) < pow(length(reads[0])*0.1/win, 2))
+            count++;
+        std::cout << res0[k] << " " << min << " " << k << " " << p << std::endl;
+    }
+    std::cout << count << std::endl;
+    std::cout << length(res0) << std::endl;
+    std::cout << sysTime() - time << std::endl;
+}
+
 
 int mTest1(StringSet<DnaString> & reads, StringSet<DnaString> & genome)
 {
@@ -116,7 +197,8 @@ int mTest3(StringSet<DnaString> & reads, StringSet<DnaString> & genome)
     std::cout << "    getDir start sysTime(): " << sysTime() - time << std::endl;
     std::cout << "    length Dir = " << length(index.dir) << std::endl;
     std::cout << "    length Text = " << lengthSum(indexText(index)) << std::endl;
-    std::cout << "    length SA = " << length(index.sa) << std::endl;
+//    std::cout << "    length SA = " << length(index.sa) << std::endl << _getSortPara_i1(shape.weight) << " " << _getSortPara_i2(shape.weight);
+     
     for(uint64_t k = 0; k < length(genome); k++)
     {
         TIter it = begin(genome[k]);
@@ -259,6 +341,7 @@ void opKmerAnalysis5(StringSet<DnaString> & genome, StringSet<DnaString> & reads
     TIndex_u index(genome);
     uint64_t mask  = 131072 - 1, dn, count=0, sum = 0;
     uint64_t anchor[mask + 1] = {1<<63};
+    uint64_t lenf;
     String<uint64_t> result;
     resize(result, length(reads));
     double time = sysTime();
@@ -267,6 +350,7 @@ void opKmerAnalysis5(StringSet<DnaString> & genome, StringSet<DnaString> & reads
 
     //createQGramIndexDirOnly(index);
     indexCreate(index, FibreSADir());
+    
     //_initAnchor(anchor, mask);
     for (uint64_t j = 0; j < length(reads); j++)
     {
@@ -277,7 +361,9 @@ void opKmerAnalysis5(StringSet<DnaString> & genome, StringSet<DnaString> & reads
             anchor[h] = 0;
         uint64_t x = 1;
         sum=0;
-        for (uint64_t k = 0; k < (length(reads[j]) - shape.span + 1); k++)
+        lenf = (3000 < length(reads[j]))?3000:length(reads[j]);
+        //for (uint64_t k = 0; k < (length(reads[j]) - shape.span + 1); k++)
+        for (uint64_t k = 0; k < (lenf - shape.span + 1); k++)
         {
             hashNext(shape, it + k);
             dn = getBucket(index.bucketMap, shape.hValue);
@@ -364,11 +450,12 @@ int main(int argc, char** argv)
     //std::cout << "read done sysTime " << sysTime() - time << std::endl;
     //umTest(reads, genome);
     //uTest(reads, genome);
-    //mTest1(reads, genome);
+    mTest1(reads, genome);
     //mTest2(reads, genome);
     //uTest3(reads, genome);
     //mTest3(reads, genome);
     //mTest4(reads, genome);
-    opKmerAnalysis5(genome, reads);
+    //opKmerAnalysis5(genome, reads);
+    //path(genome, reads);
     return 0;
 }
